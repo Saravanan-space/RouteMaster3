@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RouteMaster | Warehouse Navigation</title>
+  <link rel="stylesheet" href="style.css">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Inter:wght@300;400;500;600&display=swap"
+    rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+
+<body>
+  <div class="bg-animation"></div>
+  <div class="bg-grid"></div>
+
+  <div class="app">
+    <header>
+      <h1>RouteMaster</h1>
+      <p>Autonomous Warehouse Navigation System</p>
+      <button onclick="openInfo()" class="info-btn">ℹ️ Info / Help</button>
+    </header>
+
+    <section class="map-panel">
+      <div class="panel-header">
+        <div class="panel-title">Warehouse Map</div>
+        <div class="map-controls">
+          <!-- View Mode Selector -->
+          <div class="view-selector">
+            <button class="view-btn active" data-mode="2d" onclick="setViewMode('2d')">📊 2D Map</button>
+            <button class="view-btn" data-mode="3d" onclick="setViewMode('3d')">🏗️ 3D View</button>
+            <button class="view-btn" data-mode="street" onclick="setViewMode('street')">🚶 Street View</button>
+          </div>
+
+          <label class="toggle">
+            <input type="checkbox" id="algoToggle">
+            <span class="slider"></span>
+            <span class="label-text" id="algoLabel">Algorithm: BFS</span>
+          </label>
+          <div class="btn-group">
+            <input type="file" id="csvInput" accept=".csv" style="display:none;" />
+            <button class="small-btn" onclick="document.getElementById('csvInput').click()">📁 Upload CSV</button>
+            <button class="small-btn" onclick="downloadJSON()">📄 Download JSON</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2D Grid -->
+      <div id="view-2d">
+        <p class="hint">Drag start (blue) / target (orange) to move them. Click any empty cell to place/remove
+          obstacles.</p>
+        <div id="routeStatus" class="route-status" style="display:none;">
+          <span class="status-dot"></span>
+          <span id="routeStatusText"></span>
+        </div>
+        <div id="grid"></div>
+      </div>
+
+      <!-- 3D Canvas -->
+      <div id="view-3d" style="display:none;">
+        <p class="hint">🖱️ Left-click + drag to rotate · Scroll to zoom · Right-click to pan</p>
+        <div id="canvas3d-container"></div>
+      </div>
+
+      <!-- Street View Canvas -->
+      <div id="view-street" style="display:none;">
+        <p class="hint">🚶 First-person view along the computed path. Compute a route first, then enter Street View.
+        </p>
+        <div id="street-container">
+          <div id="street-hud">
+            <span id="street-step">Step: 0</span>
+            <span id="street-progress">Progress: 0%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="bottom-panels">
+      <div class="panel input">
+        <div class="panel-title">Warehouse Input</div>
+        <textarea id="jsonInput">
+{
+  "grid":[
+    [0,0,0,1,0],
+    [0,1,0,1,0],
+    [0,1,0,0,0],
+    [0,0,1,1,0],
+    [0,0,0,2,0]
+  ],
+  "start":[0,0]
+}
+    </textarea>
+        <div class="action-buttons">
+          <button onclick="runScan()" id="scanBtn" style="background: linear-gradient(90deg, #8b5cf6, #3b82f6);">Scan
+            Warehouse</button>
+          <button onclick="runRoute()">Compute Optimal Route</button>
+          <button onclick="generateWarehouse()">Generate Random</button>
+          <button onclick="saveGridAsWord()" style="background: #10b981;">Save Grid (Word)</button>
+          <button onclick="exportGridAsPNG()" style="background: linear-gradient(90deg, #f59e0b, #ef4444);">📸 Export
+            Grid (PNG)</button>
+          <button onclick="downloadJSON()" style="background: #334155;">📄 Download JSON</button>
+        </div>
+        <p id="scanStatus"
+          style="color: #38bdf8; font-size: 13px; margin-top: 10px; text-align: center; font-weight: bold; display: none;">
+        </p>
+
+        <div style="margin-top: 15px; display: flex; gap: 10px; align-items: center;">
+          <div style="flex: 1;">
+            <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px;">Grid Size (NxN)</label>
+            <input type="number" id="genSize" value="15" min="3" max="100"
+              style="width: 100%; padding: 8px; background: #020617; border: 1px solid #1e293b; color: #e2e8f0; border-radius: 6px; box-sizing: border-box;" />
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px;">Obstacles</label>
+            <input type="number" id="genObstacles" value="15" min="0"
+              style="width: 100%; padding: 8px; background: #020617; border: 1px solid #1e293b; color: #e2e8f0; border-radius: 6px; box-sizing: border-box;" />
+          </div>
+        </div>
+
+        <div style="margin-top: 12px;">
+          <button onclick="openHistory()" class="small-btn"
+            style="width:100%; background: linear-gradient(90deg, #6366f1, #a855f7); border: none; padding: 12px; font-size: 14px;">
+            📜 View Route History
+          </button>
+        </div>
+      </div>
+
+      <div class="panel metrics">
+        <div class="panel-title">Execution Metrics</div>
+        <div class="stats">
+          <div>
+            <label>Steps</label>
+            <span id="steps">0</span>
+          </div>
+          <div>
+            <label>Distance</label>
+            <span id="distance">0 m</span>
+          </div>
+          <div>
+            <label>Exec Time</label>
+            <span id="time">0 ms</span>
+          </div>
+          <div>
+            <label>Status</label>
+            <span id="reached" style="font-size: 16px;">—</span>
+          </div>
+        </div>
+
+        <div class="efficiency-container">
+          <label>Search Efficiency (Path Nodes / Explored Nodes)</label>
+          <div class="progress-bar">
+            <div class="progress-fill" id="efficiencyBar">0%</div>
+          </div>
+        </div>
+
+        <pre id="output"></pre>
+      </div>
+    </section>
+  </div>
+
+  <!-- HISTORY MODAL -->
+  <div id="historyModal" class="modal-overlay" style="display:none;" onclick="closeHistoryOutside(event)">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>📜 Route History</h2>
+        <button onclick="closeHistory()" class="modal-close">&times;</button>
+      </div>
+      <div id="historyList" class="history-list"></div>
+      <div class="modal-footer">
+        <button onclick="clearHistory()" class="small-btn"
+          style="background: #ef4444; border:none; padding: 10px 20px;">🗑️ Clear All History</button>
+      </div>
+    </div>
+  </div>
+  <!-- INFO MODAL -->
+  <div id="infoModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeInfo()">
+    <div class="modal-content info-modal">
+      <div class="modal-header">
+        <h2>ℹ️ About RouteMaster</h2>
+        <button onclick="closeInfo()" class="modal-close">&times;</button>
+      </div>
+      <div class="info-body">
+
+        <div class="info-section">
+          <h3>🏭 What is RouteMaster?</h3>
+          <p>RouteMaster is an <strong>AI-powered warehouse navigation simulator</strong> that calculates optimal robot
+            routes through warehouse environments using industry-standard pathfinding algorithms.</p>
+        </div>
+
+        <div class="info-section">
+          <h3>✨ Features</h3>
+          <div class="feature-grid">
+            <div class="feature-card"><span>📊</span> Interactive warehouse grid</div>
+            <div class="feature-card"><span>🧮</span> BFS & A* algorithms</div>
+            <div class="feature-card"><span>🤖</span> Real-time route animation</div>
+            <div class="feature-card"><span>🖱️</span> Drag-and-drop cells</div>
+            <div class="feature-card"><span>📁</span> CSV data import</div>
+            <div class="feature-card"><span>📸</span> Grid export (PNG/Word)</div>
+            <div class="feature-card"><span>📜</span> Route history tracking</div>
+            <div class="feature-card"><span>📡</span> AI shelf scanning</div>
+            <div class="feature-card"><span>📈</span> Efficiency metrics</div>
+            <div class="feature-card"><span>🏗️</span> 3D warehouse view</div>
+            <div class="feature-card"><span>🚶</span> Street-view mode</div>
+            <div class="feature-card"><span>🎲</span> Random grid generator</div>
+          </div>
+        </div>
+
+        <div class="info-section">
+          <h3>📋 How to Use</h3>
+          <ol class="steps-list">
+            <li><strong>Configure Grid</strong> — Enter JSON, upload CSV, or click Generate Random</li>
+            <li><strong>Set Positions</strong> — Drag the blue robot (start) and orange crate (target)</li>
+            <li><strong>Add Obstacles</strong> — Click empty cells to toggle shelves on/off</li>
+            <li><strong>Choose Algorithm</strong> — Toggle between BFS and A* using the switch</li>
+            <li><strong>Compute Route</strong> — Click "Compute Optimal Route" to find the path</li>
+            <li><strong>Watch Animation</strong> — See the robot navigate through the warehouse</li>
+            <li><strong>Review Metrics</strong> — Check steps, distance, time, and efficiency</li>
+            <li><strong>Export & Save</strong> — Download as PNG, Word, or save to history</li>
+          </ol>
+        </div>
+
+        <div class="info-section">
+          <h3>💡 Quick Tips</h3>
+          <div class="tips-container">
+            <div class="tip">🔍 Use <strong>Scan Warehouse</strong> to auto-detect the target and trigger routing</div>
+            <div class="tip">🏗️ Switch to <strong>3D View</strong> to see your warehouse from above with orbit controls
+            </div>
+            <div class="tip">🚶 Use <strong>Street View</strong> after computing a route for first-person walkthrough
+            </div>
+            <div class="tip">📜 Open <strong>Route History</strong> to reload past grids or download their snapshots
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
